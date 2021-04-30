@@ -1,0 +1,14 @@
+{
+  "name": "pose",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "license": "MIT",
+  "peerDependencies": {
+    "react": ">=16.8.x || ^17.x.x"
+  },
+  "devDependencies": {
+    "@types/react": "^17.0.4",
+    "react": "^17.0.2",
+    "typescript": "^4.2.4"
+  }
+}
