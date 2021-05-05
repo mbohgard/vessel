@@ -1,32 +1,34 @@
 import { useEffect, useState } from "react";
 
-import { Store, State } from "./";
+import { Store } from "./";
 
-export interface UsePose {
-  <T extends Store<any>, U>(store: T, selector: (state: State<T>) => U): U;
-  <T extends Store<any>>(store: T): State<T>;
-}
+type StateFromStore<S extends Store<any>> = ReturnType<S["getState"]>[0];
+type Options<T> = { selector?: (state: T) => any; supportSSR?: boolean };
+type Selected<T, O> = O extends { selector: (state: T) => infer R } ? R : T;
 
-export const usePose: UsePose = <
-  T extends Store<any>,
-  U,
-  S extends (state: State<T>) => U
+export const usePose = <
+  S extends Store<any>,
+  T extends StateFromStore<S>,
+  O extends Options<T>,
+  R extends Selected<T, O>
 >(
-  store: T,
-  selector?: S
-) => {
-  const selectState = (s?: State<T>) => {
+  store: S,
+  options?: O
+): O["supportSSR"] extends true ? R | undefined : R => {
+  const selectState = (s?: any) => {
     const state = s ?? store.getState()[0];
 
-    return selector ? selector(state) : state;
+    return options?.selector?.(state) ?? state;
   };
 
   const [state, setState] = useState(selectState);
 
   useEffect(() => {
-    const unsubscribe = store.subscribe((s) => setState(selectState(s)));
+    const unsubscribe = store.subscribe((s: any) => setState(selectState(s)));
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   return state;
