@@ -11,6 +11,8 @@ const store = createStore("foo", {
   initialState,
 });
 
+const wait = (ms = 1000) => new Promise((res) => setTimeout(res, ms));
+
 it("store instance has required methods", () => {
   expect(store).toHaveProperty("subscribe");
   expect(store).toHaveProperty("getState");
@@ -100,4 +102,24 @@ it("use cache and not query local storage unnecessarily", () => {
   expect(spy).toHaveBeenCalledTimes(0);
 
   spy.mockRestore();
+});
+
+it("remove data from local storage if expired time has passed", async () => {
+  const spy = jest.spyOn(Storage.prototype, "removeItem");
+
+  const namespace = String(Date.now());
+  const s = createStore("store", {
+    initialState: "x",
+    namespace,
+    ttl: 0.0001, // hours = 360ms
+  });
+
+  await wait(500);
+
+  const state = s.getState();
+  s.getState();
+
+  expect(spy).toHaveBeenCalledTimes(1);
+  expect(window.localStorage.getItem(`${namespace}store`)).toBeNull();
+  expect(state).toBeNull();
 });

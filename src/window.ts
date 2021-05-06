@@ -1,3 +1,1 @@
-const w = typeof window !== "undefined" ? window : undefined;
-
-export default w;
+export default typeof window !== "undefined" ? window : undefined;

@@ -1,25 +1,10 @@
-import { storage } from "./storage";
+import { storage, hasExpired } from "./storage";
 import w from "./window";
 
 const DEFAULT_NAMESPACE = "_pose-";
-const DEFAULT_TTL = 336; // hours
+const DEFAULT_TTL = 336; // 2 weeks (hours)
 
 export type State<T> = T | null;
-interface MakeMethodsOptions {
-  namespace: string;
-  name: string;
-  ttl: number;
-}
-
-const makeMethods = <T>({ namespace, name, ttl }: MakeMethodsOptions) => {
-  const key = `${namespace}${name}`;
-
-  return {
-    getStateRecord: (storedItem?: string | null) =>
-      storage.getItem<T>(key, storedItem),
-    saveStateToStore: (state: State<T>) => storage.setItem(key, state, ttl),
-  };
-};
 
 type StateSetter<T> = (state: State<T>) => State<T>;
 
@@ -41,6 +26,7 @@ export interface CreateStoreOptions<T = unknown> {
   initialState?: T;
   overwriteExisting?: boolean;
   namespace?: string;
+  /** Time in hours before removed from client's local storage */
   ttl?: number;
 }
 
@@ -53,40 +39,48 @@ export const createStore = <T = unknown>(
     ttl = DEFAULT_TTL,
   }: CreateStoreOptions<T> = {}
 ): Store<T> => {
-  const { getStateRecord, saveStateToStore } = makeMethods<T>({
-    namespace,
-    name,
-    ttl,
-  });
   const subscribers = new Set<Callback<T>>();
+  const key = `${namespace}${name}`;
+
+  const getStateRecord = (storedItem?: string | null) =>
+    storage.getItem<T>(key, storedItem);
+  const saveStateToStore = (state: State<T>, _ttl = ttl) =>
+    storage.setItem(key, state, _ttl);
+
   const existingState = getStateRecord();
   let cache =
     (overwriteExisting || !existingState) && initialState !== undefined
       ? saveStateToStore(initialState)
       : existingState;
 
-  const getCachedState = (): State<T> => cache?.state ?? null;
+  const getCachedState = (): State<T> => {
+    if (hasExpired(cache)) cache = storage.removeItem(key);
+
+    return cache?.state ?? null;
+  };
 
   const publish = () => subscribers.forEach((f) => f(getCachedState()));
 
   const listener = (e: StorageEvent) => {
     if (!e.key?.startsWith(namespace)) return;
 
-    const maybeRecord = getStateRecord(e.newValue);
-
-    cache = maybeRecord;
+    cache = getStateRecord(e.newValue);
     publish();
   };
 
   w?.addEventListener("storage", listener);
 
-  const setState: SetState<T> = (arg: State<T> | StateSetter<T>) => {
+  const setState: SetState<T> = (
+    arg: State<T> | StateSetter<T>,
+    ttl?: number
+  ) => {
+    const currentState = getCachedState();
     const newState =
-      typeof arg === "function"
-        ? (arg as StateSetter<T>)(getCachedState())
-        : arg;
+      typeof arg === "function" ? (arg as StateSetter<T>)(currentState) : arg;
 
-    cache = saveStateToStore(newState);
+    if (newState === currentState) return;
+
+    cache = saveStateToStore(newState, ttl);
     publish();
   };
 

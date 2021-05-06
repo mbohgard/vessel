@@ -23,34 +23,29 @@ const parse = <T>(str?: string | null): StateRecord<T> | null => {
   }
 };
 
+export const hours2Ms = (h: number) => h * (1000 * 60 * 60);
+
 export const createStateRecord = <T>(
   state: T,
   ttl: number
 ): StateRecord<T> => ({
-  expires: Date.now() + ttl,
+  expires: Date.now() + hours2Ms(ttl),
   state,
 });
 
-const hasExpired = <T>(maybeRecord: StateRecord<T> | null) =>
-  maybeRecord ? Date.now() > maybeRecord.expires : true;
+export const hasExpired = <T>(state: StateRecord<T> | null) =>
+  state && Date.now() > state.expires;
+
+const removeItem = (key: string) => w?.localStorage.removeItem(key) || null;
 
 export const storage = {
   getItem<T>(key: string, storedItem?: string | null): StateRecord<T> | null {
-    const maybeRecord = parse<T>(storedItem ?? w?.localStorage.getItem(key));
+    const state = parse<T>(storedItem ?? w?.localStorage.getItem(key));
 
-    if (hasExpired(maybeRecord)) {
-      w?.localStorage.removeItem(key);
-
-      return null;
-    }
-
-    return maybeRecord;
+    return hasExpired(state) ? removeItem(key) : state;
   },
   setItem<T>(key: string, state: State<T>, ttl: number): StateRecord<T> | null {
-    if (state === null) {
-      w?.localStorage.removeItem(key);
-      return null;
-    }
+    if (state === null) return removeItem(key);
 
     const record = createStateRecord(state, ttl);
     const str = stringify(record);
@@ -59,4 +54,5 @@ export const storage = {
 
     return record;
   },
+  removeItem,
 };
