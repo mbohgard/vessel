@@ -2,50 +2,48 @@
  * @jest-environment jsdom
  */
 
-import { makeStore } from "./";
+import { createStore } from "./";
+import { createStateRecord } from "./storage";
 
 const initialState = { foo: "bar" };
 
-const store = makeStore("foo", {
+const store = createStore("foo", {
   initialState,
 });
 
-test("store instance has required methods", () => {
+it("store instance has required methods", () => {
   expect(store).toHaveProperty("subscribe");
   expect(store).toHaveProperty("getState");
   expect(store).toHaveProperty("setState");
 });
 
-test("subscribe returns cleanup function", () => {
+it("subscribe returns cleanup function", () => {
   const unsubscribe = store.subscribe(() => {});
   expect(unsubscribe()).toBe(true);
 });
 
-test("getState returns current state", () => {
-  expect(store.getState()).toStrictEqual([
-    initialState,
-    JSON.stringify(initialState),
-  ]);
+it("getState returns current state", () => {
+  expect(store.getState()).toStrictEqual(initialState);
 
   store.subscribe(() => {});
   const newState = { foo: "111" };
 
   store.setState(newState);
 
-  expect(store.getState()).toStrictEqual([newState, JSON.stringify(newState)]);
+  expect(store.getState()).toStrictEqual(newState);
 });
 
-test("callback is called with new state", () => {
+it("callback is called with new state", () => {
   const cb = jest.fn();
   const newState = { foo: "222" };
 
   store.subscribe(cb);
   store.setState(newState);
 
-  expect(cb).toHaveBeenCalledWith(newState, JSON.stringify(newState));
+  expect(cb).toHaveBeenCalledWith(newState);
 });
 
-test("unsubscribe will remove callback from listeners", () => {
+it("unsubscribe will remove callback from listeners", () => {
   const cb = jest.fn();
 
   const unsubscribe = store.subscribe(cb);
@@ -56,41 +54,46 @@ test("unsubscribe will remove callback from listeners", () => {
   expect(cb).toHaveBeenCalledTimes(1);
 });
 
-test("makeStore won't overwrite existing state if present", () => {
-  window.localStorage.setItem("__s-s", "0");
-  const s = makeStore("s", {
+it("makeStore won't overwrite existing state if present", () => {
+  const namespace = String(Date.now());
+
+  window.localStorage.setItem(
+    `${namespace}store`,
+    JSON.stringify(createStateRecord(0, 1000))
+  );
+  const s = createStore("store", {
     initialState: 1,
-    namespace: "__s-",
+    namespace,
   });
 
   s.subscribe(() => {});
-
-  expect(s.getState()).toStrictEqual([0, "0"]);
+  expect(s.getState()).toStrictEqual(0);
 });
 
-test("fire callback on storage event", (done) => {
-  const state = "x";
-  const stateStr = JSON.stringify(state);
-  const s = makeStore("b", {
-    initialState: state,
-    namespace: "a",
+it("fire callback on storage event", (done) => {
+  const namespace = String(Date.now());
+  const s = createStore("store", {
+    initialState: "x",
+    namespace,
   });
   const cb = jest.fn();
+  const newState = "y";
+
   const event = new StorageEvent("storage", {
-    newValue: stateStr,
-    key: "ab",
+    newValue: JSON.stringify(createStateRecord(newState, 1000)),
+    key: `${namespace}x`,
   });
 
   s.subscribe((...args) => {
     cb(...args);
-    expect(cb).toHaveBeenCalledWith(state, stateStr);
+    expect(cb).toHaveBeenCalledWith(newState);
     done();
   });
 
   window.dispatchEvent(event);
 });
 
-test("use cache and not query local storage unnecessarily", () => {
+it("use cache and not query local storage unnecessarily", () => {
   const spy = jest.spyOn(Storage.prototype, "getItem");
 
   store.getState();

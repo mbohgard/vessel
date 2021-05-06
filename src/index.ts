@@ -1,114 +1,93 @@
-const w = typeof window !== "undefined" ? window : undefined;
+import { storage } from "./storage";
+import w from "./window";
 
 const DEFAULT_NAMESPACE = "_pose-";
+const DEFAULT_TTL = 336; // hours
 
-export type State<T> = T extends {} ? T : T | null;
-type StateString<T> = T extends {} ? string : string | null;
-type FullState<T> = readonly [State<T>, StateString<T>];
+export type State<T> = T | null;
+interface MakeMethodsOptions {
+  namespace: string;
+  name: string;
+  ttl: number;
+}
 
-const state2Str = <T>(state: T) => {
-  try {
-    return JSON.stringify(state);
-  } catch {
-    console.error("State must be serializable");
-    return null;
-  }
-};
-
-const str2State = (str: string | null) => {
-  try {
-    return JSON.parse(str ?? "null");
-  } catch {
-    return null;
-  }
-};
-
-const makeMethods = <T>(namespace: string, name: string) => {
+const makeMethods = <T>({ namespace, name, ttl }: MakeMethodsOptions) => {
   const key = `${namespace}${name}`;
-  const getStateStr = () => w?.localStorage.getItem(key) ?? null;
-  const toFullState = (...arr: any[]) => ([...arr] as unknown) as FullState<T>;
 
   return {
-    getState: (stateStr?: string | null) => {
-      const str = stateStr === undefined ? getStateStr() : stateStr;
-      const parsed = str2State(str);
-
-      return toFullState(parsed, str);
-    },
-    saveState: (state: T, stateStr?: string | null) => {
-      const currentStateStr = getStateStr();
-      const str = stateStr ?? state2Str(state);
-
-      if (str === null) w?.localStorage.removeItem(key);
-      else if (currentStateStr !== str) w?.localStorage.setItem(key, str);
-
-      return toFullState(state, str);
-    },
+    getStateRecord: (storedItem?: string | null) =>
+      storage.getItem<T>(key, storedItem),
+    saveStateToStore: (state: State<T>) => storage.setItem(key, state, ttl),
   };
 };
 
-type StateSetter<T> = (state: State<T>, stateStr: StateString<T>) => State<T>;
+type StateSetter<T> = (state: State<T>) => State<T>;
 
 export interface SetState<T> {
   (newState: State<T>): void;
   (setter: StateSetter<T>): void;
 }
 
-export type Callback<T> = (...args: FullState<T>) => void;
+export type Callback<T> = (state: State<T>) => void;
 
 export type Store<T> = {
   subscribe: (callback: Callback<T>) => () => boolean;
-  getState: () => FullState<T>;
+  getState: () => State<T>;
   setState: SetState<T>;
   clean: () => void;
 };
 
-export interface Options<T> {
+export interface CreateStoreOptions<T = unknown> {
   initialState?: T;
   overwriteExisting?: boolean;
   namespace?: string;
+  ttl?: number;
 }
 
-export const makeStore = <T = unknown>(
+export const createStore = <T = unknown>(
   name: string,
   {
     initialState,
     overwriteExisting = false,
     namespace = DEFAULT_NAMESPACE,
-  }: Options<T> = {}
+    ttl = DEFAULT_TTL,
+  }: CreateStoreOptions<T> = {}
 ): Store<T> => {
-  const { getState, saveState } = makeMethods<T>(namespace, name);
+  const { getStateRecord, saveStateToStore } = makeMethods<T>({
+    namespace,
+    name,
+    ttl,
+  });
   const subscribers = new Set<Callback<T>>();
-  const existingState = getState();
+  const existingState = getStateRecord();
   let cache =
-    (overwriteExisting || existingState[0] === null) &&
-    initialState !== undefined
-      ? saveState(initialState)
+    (overwriteExisting || !existingState) && initialState !== undefined
+      ? saveStateToStore(initialState)
       : existingState;
 
-  const publish = () => subscribers.forEach((f) => f(...cache));
+  const getCachedState = (): State<T> => cache?.state ?? null;
+
+  const publish = () => subscribers.forEach((f) => f(getCachedState()));
 
   const listener = (e: StorageEvent) => {
     if (!e.key?.startsWith(namespace)) return;
 
-    cache = getState(e.newValue);
+    const maybeRecord = getStateRecord(e.newValue);
+
+    cache = maybeRecord;
     publish();
   };
 
   w?.addEventListener("storage", listener);
 
   const setState: SetState<T> = (arg: State<T> | StateSetter<T>) => {
-    const [currentState, currentStateStr] = cache;
     const newState =
       typeof arg === "function"
-        ? (arg as StateSetter<T>)(currentState, currentStateStr)
+        ? (arg as StateSetter<T>)(getCachedState())
         : arg;
-    const newStateStr = state2Str(newState);
 
-    if (newStateStr !== currentStateStr) {
-      cache = saveState(newState as T, newStateStr);
-      publish();
-    }
+    cache = saveStateToStore(newState);
+    publish();
   };
 
   return {
@@ -117,8 +96,21 @@ export const makeStore = <T = unknown>(
 
       return () => subscribers.delete(cb);
     },
-    getState: () => cache,
+    getState: () => getCachedState(),
     setState,
     clean: () => w?.removeEventListener("storage", listener),
   };
 };
+
+export type MakeCreateStoreOptions = Pick<
+  CreateStoreOptions,
+  "namespace" | "ttl"
+>;
+
+export const makeCreateStore = ({
+  namespace = DEFAULT_NAMESPACE,
+  ttl = DEFAULT_TTL,
+}: MakeCreateStoreOptions = {}) => <T>(
+  name: string,
+  options: CreateStoreOptions<T> = {}
+) => createStore(name, { namespace, ttl, ...options });
