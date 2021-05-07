@@ -14,7 +14,7 @@ export const usePose = <
 >(
   store: S,
   options?: O
-): O["supportSSR"] extends true ? R | undefined : R => {
+): [O["supportSSR"] extends true ? R | undefined : R, S["setState"]] => {
   const { selector, supportSSR } = options ?? {};
 
   const selectState = (s?: T | null) => {
@@ -37,5 +37,5 @@ export const usePose = <
     };
   }, []);
 
-  return state;
+  return [state, store.setState];
 };

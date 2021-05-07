@@ -13,7 +13,7 @@ const store = createStore("hook", { initialState: { foo: "bar" } });
 it("should return the state", () => {
   const { result } = renderHook(() => usePose(store));
 
-  expect(result.current).toStrictEqual({ foo: "bar" });
+  expect(result.current[0]).toStrictEqual({ foo: "bar" });
 });
 
 it("should return the selected state", () => {
@@ -21,27 +21,33 @@ it("should return the selected state", () => {
     usePose(store, { selector: (s) => s?.foo })
   );
 
-  expect(result.current).toBe("bar");
+  expect(result.current[0]).toBe("bar");
 });
 
 it("should return undefined on first render with SSR support enabled", () => {
   const { result, hydrate } = serverRenderHook(() =>
     usePose(store, { supportSSR: true })
   );
-
-  expect(result.current).toBe(undefined);
+  expect(result.current[0]).toBe(undefined);
 
   hydrate();
 
-  expect(result.current).toStrictEqual({ foo: "bar" });
+  expect(result.current[0]).toStrictEqual({ foo: "bar" });
 });
 
-it("should render with the new state", async () => {
+it("should render with the new state", () => {
   const { result } = renderHook(() => usePose(store));
+  const [, setState] = result.current;
 
   act(() => {
-    store.setState({ foo: "baz" });
+    setState({ foo: "baz" });
   });
 
-  expect(result.current).toStrictEqual({ foo: "baz" });
+  expect(result.current[0]).toStrictEqual({ foo: "baz" });
+
+  act(() => {
+    setState((s) => (s ? { ...s, foo: "qux" } : s));
+  });
+
+  expect(result.current[0]).toStrictEqual({ foo: "qux" });
 });
