@@ -4,7 +4,7 @@
   "main": "dist/index.js",
   "license": "MIT",
   "scripts": {
-    "test": "yarn jest"
+    "test": "yarn jest --verbose"
   },
   "peerDependencies": {
     "react": ">=16.8.x || ^17.x.x"

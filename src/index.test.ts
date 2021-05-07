@@ -2,8 +2,8 @@
  * @jest-environment jsdom
  */
 
-import { createStore } from "./";
-import { createStateRecord } from "./storage";
+import { createStore, makeCreateStore } from "./";
+import { createStateRecord, storage } from "./storage";
 
 const initialState = { foo: "bar" };
 
@@ -12,6 +12,7 @@ const store = createStore("foo", {
 });
 
 const wait = (ms = 1000) => new Promise((res) => setTimeout(res, ms));
+const ns = () => String(Date.now());
 
 it("store instance has required methods", () => {
   expect(store).toHaveProperty("subscribe");
@@ -56,8 +57,8 @@ it("unsubscribe will remove callback from listeners", () => {
   expect(cb).toHaveBeenCalledTimes(1);
 });
 
-it("makeStore won't overwrite existing state if present", () => {
-  const namespace = String(Date.now());
+it("createStore WON'T overwrite existing state if present", () => {
+  const namespace = ns();
 
   window.localStorage.setItem(
     `${namespace}store`,
@@ -68,12 +69,27 @@ it("makeStore won't overwrite existing state if present", () => {
     namespace,
   });
 
-  s.subscribe(() => {});
   expect(s.getState()).toStrictEqual(0);
 });
 
+it("createStore WILL overwrite existing state if present", () => {
+  const namespace = ns();
+
+  window.localStorage.setItem(
+    `${namespace}store`,
+    JSON.stringify(createStateRecord(0, 1000))
+  );
+  const s = createStore("store", {
+    initialState: 1,
+    namespace,
+    overwriteExisting: true,
+  });
+
+  expect(s.getState()).toStrictEqual(1);
+});
+
 it("fire callback on storage event", (done) => {
-  const namespace = String(Date.now());
+  const namespace = ns();
   const s = createStore("store", {
     initialState: "x",
     namespace,
@@ -107,7 +123,7 @@ it("use cache and not query local storage unnecessarily", () => {
 it("remove data from local storage if expired time has passed", async () => {
   const spy = jest.spyOn(Storage.prototype, "removeItem");
 
-  const namespace = String(Date.now());
+  const namespace = ns();
   const s = createStore("store", {
     initialState: "x",
     namespace,
@@ -122,4 +138,80 @@ it("remove data from local storage if expired time has passed", async () => {
   expect(spy).toHaveBeenCalledTimes(1);
   expect(window.localStorage.getItem(`${namespace}store`)).toBeNull();
   expect(state).toBeNull();
+
+  spy.mockRestore();
+});
+
+it("doesn't touch local storage if persistent is set to false", () => {
+  const g = jest.spyOn(Storage.prototype, "getItem");
+  const s = jest.spyOn(Storage.prototype, "setItem");
+  const r = jest.spyOn(Storage.prototype, "removeItem");
+
+  const store = createStore("store", {
+    namespace: ns(),
+    initialState: "x",
+    persistent: false,
+  });
+
+  store.getState();
+  store.setState("y");
+  store.setState(null);
+
+  expect(g).toHaveBeenCalledTimes(0);
+  expect(s).toHaveBeenCalledTimes(0);
+  expect(r).toHaveBeenCalledTimes(0);
+  expect(store.getState()).toBeNull();
+
+  g.mockRestore();
+  s.mockRestore();
+  r.mockRestore();
+});
+
+it("makeCreateStore will set correct defaults", async () => {
+  const g = jest.spyOn(Storage.prototype, "getItem");
+  const r = jest.spyOn(Storage.prototype, "removeItem");
+
+  const createPersistent = makeCreateStore({
+    namespace: "persistent",
+    ttl: 0.0001,
+  });
+  const persistentStore = createPersistent("store", { initialState: "x" });
+
+  const createLocal = makeCreateStore({ persistent: false });
+  const localStore = createLocal("store", { initialState: "x" });
+
+  localStore.setState("y");
+
+  expect(persistentStore.getState()).toBe("x");
+  expect(storage.getItem("persistentstore")?.state).toBe("x");
+  expect(localStore.getState()).toBe("y");
+
+  await wait(500);
+
+  expect(persistentStore.getState()).toBeNull();
+
+  expect(g).toHaveBeenCalledTimes(2);
+  expect(r).toHaveBeenCalledTimes(1);
+
+  g.mockRestore();
+  r.mockRestore();
+});
+
+it("doesn't reset state and notify subscribers if the state is strict equal to current state", () => {
+  const cb = jest.fn();
+  const store = createStore("store", {
+    namespace: ns(),
+    initialState: { foo: "bar" },
+  });
+
+  store.subscribe(cb);
+
+  store.setState(store.getState());
+
+  const newState = { foo: "baz" };
+
+  store.setState(newState);
+  store.setState(newState);
+
+  expect(cb).toHaveBeenCalledTimes(1);
 });

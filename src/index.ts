@@ -1,4 +1,4 @@
-import { storage, hasExpired } from "./storage";
+import { storage, hasExpired, isRecord } from "./storage";
 import w from "./window";
 
 const DEFAULT_NAMESPACE = "_pose-";
@@ -23,11 +23,16 @@ export type Store<T> = {
 };
 
 export interface CreateStoreOptions<T = unknown> {
+  /** Initial state if none is found in local storage */
   initialState?: T;
+  /** Overwrite any existing state in local storage with the provided initial state */
   overwriteExisting?: boolean;
+  /** Prefix to use in local storage */
   namespace?: string;
   /** Time in hours before removed from client's local storage */
   ttl?: number;
+  /** Opt-out of the persistent storage functionality by setting this to false */
+  persistent?: boolean;
 }
 
 export const createStore = <T = unknown>(
@@ -37,6 +42,7 @@ export const createStore = <T = unknown>(
     overwriteExisting = false,
     namespace = DEFAULT_NAMESPACE,
     ttl = DEFAULT_TTL,
+    persistent = true,
   }: CreateStoreOptions<T> = {}
 ): Store<T> => {
   const subscribers = new Set<Callback<T>>();
@@ -45,30 +51,39 @@ export const createStore = <T = unknown>(
   const getStateRecord = (storedItem?: string | null) =>
     storage.getItem<T>(key, storedItem);
   const saveStateToStore = (state: State<T>, _ttl = ttl) =>
-    storage.setItem(key, state, _ttl);
+    persistent ? storage.setItem(key, state, _ttl) : state;
 
-  const existingState = getStateRecord();
+  const existingState = persistent ? getStateRecord() : null;
   let cache =
     (overwriteExisting || !existingState) && initialState !== undefined
       ? saveStateToStore(initialState)
       : existingState;
 
-  const getCachedState = (): State<T> => {
-    if (hasExpired(cache)) cache = storage.removeItem(key);
+  const getCachedState = (check = true): State<T> => {
+    if (check && hasExpired(cache)) cache = storage.removeItem(key);
 
-    return cache?.state ?? null;
+    return isRecord(cache) ? cache.state : cache;
   };
 
-  const publish = () => subscribers.forEach((f) => f(getCachedState()));
-
-  const listener = (e: StorageEvent) => {
-    if (!e.key?.startsWith(namespace)) return;
-
-    cache = getStateRecord(e.newValue);
-    publish();
+  const publish = () => {
+    const state = getCachedState(false);
+    subscribers.forEach((f) => f(state));
   };
 
-  w?.addEventListener("storage", listener);
+  const subscribeToStorage = () => {
+    if (!persistent) return () => {};
+
+    const listener = (e: StorageEvent) => {
+      if (!e.key?.startsWith(namespace)) return;
+
+      cache = getStateRecord(e.newValue);
+      publish();
+    };
+
+    w?.addEventListener("storage", listener);
+
+    return () => w?.removeEventListener("storage", listener);
+  };
 
   const setState: SetState<T> = (
     arg: State<T> | StateSetter<T>,
@@ -92,19 +107,20 @@ export const createStore = <T = unknown>(
     },
     getState: () => getCachedState(),
     setState,
-    clean: () => w?.removeEventListener("storage", listener),
+    clean: subscribeToStorage(),
   };
 };
 
 export type MakeCreateStoreOptions = Pick<
   CreateStoreOptions,
-  "namespace" | "ttl"
+  "namespace" | "ttl" | "persistent"
 >;
 
 export const makeCreateStore = ({
   namespace = DEFAULT_NAMESPACE,
   ttl = DEFAULT_TTL,
+  persistent = true,
 }: MakeCreateStoreOptions = {}) => <T>(
   name: string,
   options: CreateStoreOptions<T> = {}
-) => createStore(name, { namespace, ttl, ...options });
+) => createStore(name, { namespace, ttl, persistent, ...options });
