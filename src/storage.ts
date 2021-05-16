@@ -34,7 +34,7 @@ export const createStateRecord = <T>(
 });
 
 export const isRecord = <T extends unknown>(
-  state: State<T> | StateRecord<T>
+  state: State<T> | StateRecord<T> | null
 ): state is StateRecord<T> =>
   Boolean(Object(state) === state && "expires" in (state as object));
 

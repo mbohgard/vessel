@@ -2,8 +2,9 @@
  * @jest-environment jsdom
  */
 
-import { createStore, makeCreateStore } from "./";
-import { createStateRecord, storage } from "./storage";
+import { createStore } from "./";
+import { createStateRecord } from "./storage";
+// import { createStateRecord, storage } from "./storage";
 
 const initialState = { foo: "bar" };
 
@@ -142,60 +143,60 @@ it("remove data from local storage if expired time has passed", async () => {
   spy.mockRestore();
 });
 
-it("doesn't touch local storage if persistent is set to false", () => {
-  const g = jest.spyOn(Storage.prototype, "getItem");
-  const s = jest.spyOn(Storage.prototype, "setItem");
-  const r = jest.spyOn(Storage.prototype, "removeItem");
+// it("doesn't touch local storage if persistent is set to false", () => {
+//   const g = jest.spyOn(Storage.prototype, "getItem");
+//   const s = jest.spyOn(Storage.prototype, "setItem");
+//   const r = jest.spyOn(Storage.prototype, "removeItem");
 
-  const store = createStore("store", {
-    namespace: ns(),
-    initialState: "x",
-    persistent: false,
-  });
+//   const store = createStore("store", {
+//     namespace: ns(),
+//     initialState: "x",
+//     persistent: false,
+//   });
 
-  store.getState();
-  store.setState("y");
-  store.setState(null);
+//   store.getState();
+//   store.setState("y");
+//   store.setState(null);
 
-  expect(g).toHaveBeenCalledTimes(0);
-  expect(s).toHaveBeenCalledTimes(0);
-  expect(r).toHaveBeenCalledTimes(0);
-  expect(store.getState()).toBeNull();
+//   expect(g).toHaveBeenCalledTimes(0);
+//   expect(s).toHaveBeenCalledTimes(0);
+//   expect(r).toHaveBeenCalledTimes(0);
+//   expect(store.getState()).toBeNull();
 
-  g.mockRestore();
-  s.mockRestore();
-  r.mockRestore();
-});
+//   g.mockRestore();
+//   s.mockRestore();
+//   r.mockRestore();
+// });
 
-it("makeCreateStore will set correct defaults", async () => {
-  const g = jest.spyOn(Storage.prototype, "getItem");
-  const r = jest.spyOn(Storage.prototype, "removeItem");
+// it("makeCreateStore will set correct defaults", async () => {
+//   const g = jest.spyOn(Storage.prototype, "getItem");
+//   const r = jest.spyOn(Storage.prototype, "removeItem");
 
-  const createPersistent = makeCreateStore({
-    namespace: "persistent",
-    ttl: 0.0001,
-  });
-  const persistentStore = createPersistent("store", { initialState: "x" });
+//   const createPersistent = makeCreateStore({
+//     namespace: "persistent",
+//     ttl: 0.0001,
+//   });
+//   const persistentStore = createPersistent("store", { initialState: "x" });
 
-  const createLocal = makeCreateStore({ persistent: false });
-  const localStore = createLocal("store", { initialState: "x" });
+//   const createLocal = makeCreateStore({ persistent: false });
+//   const localStore = createLocal("store", { initialState: "x" });
 
-  localStore.setState("y");
+//   localStore.setState("y");
 
-  expect(persistentStore.getState()).toBe("x");
-  expect(storage.getItem("persistentstore")?.state).toBe("x");
-  expect(localStore.getState()).toBe("y");
+//   expect(persistentStore.getState()).toBe("x");
+//   expect(storage.getItem("persistentstore")?.state).toBe("x");
+//   expect(localStore.getState()).toBe("y");
 
-  await wait(500);
+//   await wait(500);
 
-  expect(persistentStore.getState()).toBeNull();
+//   expect(persistentStore.getState()).toBeNull();
 
-  expect(g).toHaveBeenCalledTimes(2);
-  expect(r).toHaveBeenCalledTimes(1);
+//   expect(g).toHaveBeenCalledTimes(2);
+//   expect(r).toHaveBeenCalledTimes(1);
 
-  g.mockRestore();
-  r.mockRestore();
-});
+//   g.mockRestore();
+//   r.mockRestore();
+// });
 
 it("doesn't reset state and notify subscribers if the state is strict equal to current state", () => {
   const cb = jest.fn();

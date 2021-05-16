@@ -6,19 +6,19 @@ import { renderHook, act } from "@testing-library/react-hooks/dom";
 import { renderHook as serverRenderHook } from "@testing-library/react-hooks/server";
 
 import { createStore } from "./index";
-import { usePose } from "./usePose";
+import { useVessel } from "./useVessel";
 
 const store = createStore("hook", { initialState: { foo: "bar" } });
 
 it("should return the state", () => {
-  const { result } = renderHook(() => usePose(store));
+  const { result } = renderHook(() => useVessel(store));
 
   expect(result.current[0]).toStrictEqual({ foo: "bar" });
 });
 
 it("should return the selected state", () => {
   const { result } = renderHook(() =>
-    usePose(store, { selector: (s) => s?.foo })
+    useVessel(store, { selector: (s) => s?.foo })
   );
 
   expect(result.current[0]).toBe("bar");
@@ -26,7 +26,7 @@ it("should return the selected state", () => {
 
 it("should return undefined on first render with SSR support enabled", () => {
   const { result, hydrate } = serverRenderHook(() =>
-    usePose(store, { supportSSR: true })
+    useVessel(store, { supportSSR: true })
   );
   expect(result.current[0]).toBe(undefined);
 
@@ -36,7 +36,7 @@ it("should return undefined on first render with SSR support enabled", () => {
 });
 
 it("should render with the new state", () => {
-  const { result } = renderHook(() => usePose(store));
+  const { result } = renderHook(() => useVessel(store));
   const [, setState] = result.current;
 
   act(() => {

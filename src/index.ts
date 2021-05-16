@@ -1,51 +1,77 @@
 import { storage, hasExpired, isRecord } from "./storage";
 import w from "./window";
 
-const DEFAULT_NAMESPACE = "_pose-";
+const DEFAULT_NAMESPACE = "vssl-";
 const DEFAULT_TTL = 336; // 2 weeks (hours)
 
-export type State<T> = T | null;
+export type State<T, N = null> = null extends N ? T | null : T;
+type StateSetter<T, N> = (state: State<T, N>) => State<T, N>;
 
-type StateSetter<T> = (state: State<T>) => State<T>;
-
-export interface SetState<T> {
-  (newState: State<T>): void;
-  (setter: StateSetter<T>): void;
+export interface SetState<T, N> {
+  (newState: State<T, N>): void;
+  (setter: StateSetter<T, N>): void;
 }
 
-export type Callback<T> = (state: State<T>) => void;
+export type Callback<C> = (state: C) => void;
 
-export type Store<T> = {
-  subscribe: (callback: Callback<T>) => () => boolean;
-  getState: () => State<T>;
-  setState: SetState<T>;
+export type Store<T extends unknown, N = null> = {
+  subscribe: (callback: Callback<State<T, N>>) => () => boolean;
+  getState: () => State<T, N>;
+  setState: SetState<T, N>;
   clean: () => void;
 };
-
-export interface CreateStoreOptions<T = unknown> {
-  /** Initial state if none is found in local storage */
+interface PersistentOptions<O, E, T = unknown> {
+  /** Initial state of the store, also sets the store state type */
   initialState?: T;
+  /** Opt-out of the persistent storage functionality by setting this to false */
+  persistent?: true;
   /** Overwrite any existing state in local storage with the provided initial state */
-  overwriteExisting?: boolean;
+  overwriteExisting?: O;
   /** Prefix to use in local storage */
   namespace?: string;
   /** Time in hours before removed from client's local storage */
-  ttl?: number;
-  /** Opt-out of the persistent storage functionality by setting this to false */
-  persistent?: boolean;
+  ttl?: E;
 }
 
-export const createStore = <T = unknown>(
+interface UnpersistentOptions<T = unknown> {
+  /** Initial state of the store, also sets the store state type */
+  initialState?: T;
+  /** Opt-out of the persistent storage functionality by setting this to false */
+  persistent: false;
+}
+interface CreateStore {
+  <T>(name: string): Store<T, null>;
+  <T>(name: string, options: UnpersistentOptions<T>): Store<T, never>;
+  <
+    O extends boolean,
+    E extends number,
+    T = unknown,
+    X = O extends true ? (E extends 0 ? never : null) : null
+  >(
+    name: string,
+    options: PersistentOptions<O, E, T>
+  ): Store<T, X>;
+}
+
+export const createStore: CreateStore = <
+  O extends boolean,
+  E extends number,
+  T = unknown,
+  R = O extends true ? (E extends 0 ? never : null) : null
+>(
   name: string,
   {
     initialState,
+    persistent,
+    ...options
+  }: PersistentOptions<O, E, T> | UnpersistentOptions<T> = { persistent: true }
+) => {
+  const {
     overwriteExisting = false,
     namespace = DEFAULT_NAMESPACE,
     ttl = DEFAULT_TTL,
-    persistent = true,
-  }: CreateStoreOptions<T> = {}
-): Store<T> => {
-  const subscribers = new Set<Callback<T>>();
+  } = options as PersistentOptions<O, E, T>;
+  const subscribers = new Set<Callback<State<T, R>>>();
   const key = `${namespace}${name}`;
 
   const getStateRecord = (storedItem?: string | null) =>
@@ -59,10 +85,10 @@ export const createStore = <T = unknown>(
       ? saveStateToStore(initialState)
       : existingState;
 
-  const getCachedState = (check = true): State<T> => {
+  const getCachedState = (check = true): State<T, R> => {
     if (check && hasExpired(cache)) cache = storage.removeItem(key);
 
-    return isRecord(cache) ? cache.state : cache;
+    return (isRecord(cache) ? cache.state : cache) as State<T, R>;
   };
 
   const publish = () => {
@@ -85,13 +111,12 @@ export const createStore = <T = unknown>(
     return () => w?.removeEventListener("storage", listener);
   };
 
-  const setState: SetState<T> = (
-    arg: State<T> | StateSetter<T>,
-    ttl?: number
-  ) => {
+  const setState = (arg: State<T, R> | StateSetter<T, R>, ttl?: number) => {
     const currentState = getCachedState();
     const newState =
-      typeof arg === "function" ? (arg as StateSetter<T>)(currentState) : arg;
+      typeof arg === "function"
+        ? (arg as StateSetter<T, R>)(currentState)
+        : arg;
 
     if (newState === currentState) return;
 
@@ -100,7 +125,7 @@ export const createStore = <T = unknown>(
   };
 
   return {
-    subscribe: (cb: Callback<T>) => {
+    subscribe: (cb: Callback<State<T, R>>) => {
       subscribers.add(cb);
 
       return () => subscribers.delete(cb);
@@ -110,17 +135,3 @@ export const createStore = <T = unknown>(
     clean: subscribeToStorage(),
   };
 };
-
-export type MakeCreateStoreOptions = Pick<
-  CreateStoreOptions,
-  "namespace" | "ttl" | "persistent"
->;
-
-export const makeCreateStore = ({
-  namespace = DEFAULT_NAMESPACE,
-  ttl = DEFAULT_TTL,
-  persistent = true,
-}: MakeCreateStoreOptions = {}) => <T>(
-  name: string,
-  options: CreateStoreOptions<T> = {}
-) => createStore(name, { namespace, ttl, persistent, ...options });

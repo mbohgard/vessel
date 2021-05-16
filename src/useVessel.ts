@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 
-import { Store } from "./";
+import { Store } from ".";
 
-type StateFromStore<S extends Store<any>> = ReturnType<S["getState"]>;
+type PossibleStores = Store<any, null> | Store<any, never>;
+type StateFromStore<S extends PossibleStores> = ReturnType<S["getState"]>;
 type Options<T> = { selector?: (state: T) => any; supportSSR?: boolean };
 type Selected<T, O> = O extends { selector: (state: T) => infer R } ? R : T;
 
-export const usePose = <
-  S extends Store<any>,
+export const useVessel = <
+  S extends PossibleStores,
   T extends StateFromStore<S>,
   O extends Options<T>,
   R extends Selected<T, O>
@@ -39,3 +40,10 @@ export const usePose = <
 
   return [state, store.setState];
 };
+
+export const makeVesselHook = <S extends PossibleStores>(store: S) => <
+  T extends StateFromStore<S>,
+  O extends Options<T>
+>(
+  options?: O
+) => useVessel(store, options);
