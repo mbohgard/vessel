@@ -57,6 +57,36 @@ it("unsubscribe will remove callback from listeners", () => {
   expect(cb).toHaveBeenCalledTimes(1);
 });
 
+it("makeCreateStore will set correct defaults", async () => {
+  const g = jest.spyOn(Storage.prototype, "getItem");
+  const r = jest.spyOn(Storage.prototype, "removeItem");
+
+  const createPersistent = makeCreateStore({
+    namespace: "persistent",
+    ttl: 0.0001,
+  });
+  const persistentStore = createPersistent("store", { initialState: "x" });
+
+  const createLocal = makeCreateStore({ persistent: false });
+  const localStore = createLocal("store", { initialState: "x" });
+
+  localStore.setState("y");
+
+  expect(persistentStore.getState()).toBe("x");
+  expect(storage.getItem("persistentstore")?.state).toBe("x");
+  expect(localStore.getState()).toBe("y");
+
+  await wait(500);
+
+  expect(persistentStore.getState()).toBeNull();
+
+  expect(g).toHaveBeenCalledTimes(2);
+  expect(r).toHaveBeenCalledTimes(1);
+
+  g.mockRestore();
+  r.mockRestore();
+});
+
 it("createStore WON'T overwrite existing state if present", () => {
   const namespace = ns();
 
@@ -165,34 +195,19 @@ it("doesn't touch local storage if persistent is set to false", () => {
   r.mockRestore();
 });
 
-it("makeCreateStore will set correct defaults", async () => {
-  const g = jest.spyOn(Storage.prototype, "getItem");
-  const r = jest.spyOn(Storage.prototype, "removeItem");
-
-  const createPersistent = makeCreateStore({
-    namespace: "persistent",
-    ttl: 0.0001,
+it("it won't delete the persisted state if ttl is set to 0 (disabled)", async () => {
+  const namespace = ns();
+  const makeStore = makeCreateStore({
+    ttl: 0.0001, // hours = 360ms
+    namespace,
   });
-  const persistentStore = createPersistent("store", { initialState: "x" });
+  const store = makeStore("store");
 
-  const createLocal = makeCreateStore({ persistent: false });
-  const localStore = createLocal("store", { initialState: "x" });
-
-  localStore.setState("y");
-
-  expect(persistentStore.getState()).toBe("x");
-  expect(storage.getItem("persistentstore")?.state).toBe("x");
-  expect(localStore.getState()).toBe("y");
+  store.setState(0, 0);
 
   await wait(500);
 
-  expect(persistentStore.getState()).toBeNull();
-
-  expect(g).toHaveBeenCalledTimes(2);
-  expect(r).toHaveBeenCalledTimes(1);
-
-  g.mockRestore();
-  r.mockRestore();
+  expect(store.getState()).toBe(0);
 });
 
 it("doesn't reset state and notify subscribers if the state is strict equal to current state", () => {

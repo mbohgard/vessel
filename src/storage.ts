@@ -29,7 +29,7 @@ export const createStateRecord = <T>(
   state: T,
   ttl: number
 ): StateRecord<T> => ({
-  expires: Date.now() + hours2Ms(ttl),
+  expires: ttl ? Date.now() + hours2Ms(ttl) : 0,
   state,
 });
 
@@ -39,7 +39,7 @@ export const isRecord = <T extends unknown>(
   Boolean(Object(state) === state && "expires" in (state as object));
 
 export const hasExpired = <T>(state: State<T> | StateRecord<T>) =>
-  isRecord(state) && Date.now() > state.expires;
+  isRecord(state) && state.expires !== 0 && Date.now() > state.expires;
 
 const removeItem = (key: string) => w?.localStorage.removeItem(key) || null;
 
