@@ -1,5 +1,6 @@
 import type { State } from "./index";
 import w from "./window";
+import { batch } from "./batch";
 
 type StateRecord<T = any> = {
   expires: number;
@@ -55,7 +56,8 @@ export const storage = {
     const record = createStateRecord(state, ttl);
     const str = stringify(record);
 
-    if (typeof str === "string") w?.localStorage.setItem(key, str);
+    if (typeof str === "string")
+      batch(key, () => w?.localStorage.setItem(key, str));
 
     return record;
   },
