@@ -158,7 +158,7 @@ it("doesn't touch local storage if persistent is set to false", () => {
   expect(g).toHaveBeenCalledTimes(0);
   expect(s).toHaveBeenCalledTimes(0);
   expect(r).toHaveBeenCalledTimes(0);
-  expect(store.getState()).toBeNull();
+  expect(store.getState()).toBe("y");
 
   g.mockRestore();
   s.mockRestore();
