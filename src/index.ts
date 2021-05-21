@@ -3,6 +3,7 @@ import w from "./window";
 
 const DEFAULT_NAMESPACE = "vssl-";
 const DEFAULT_TTL = 336; // 2 weeks (hours)
+export const VESSEL_TYPE = "vessel-store";
 
 export type State<T, N = null> = null extends N ? T | null : T;
 type StateSetter<T, N> = (state: State<T, N>) => State<T, N>;
@@ -18,7 +19,8 @@ export type Store<T extends unknown, N = null> = {
   subscribe: (callback: Callback<State<T, N>>) => () => boolean;
   getState: () => State<T, N>;
   setState: SetState<T, N>;
-  clean: () => void;
+  end: (erase?: boolean, reason?: string) => void;
+  reset: () => void;
 };
 
 interface CommonOptions<P, T = unknown> {
@@ -61,10 +63,10 @@ export const makeCreateStore = <
   };
 
   return <
+    T = unknown,
     P extends boolean = PP,
     O extends boolean = OO,
     E extends number = EE,
-    T = unknown,
     R = P extends false
       ? never
       : O extends true
@@ -76,6 +78,7 @@ export const makeCreateStore = <
     name: string,
     options?: Options<false, P, O, E, T>
   ) => {
+    let suspended: false | string = false;
     const { overwriteExisting, namespace, ttl, persistent, initialState } = {
       ...defaults,
       ...options,
@@ -105,22 +108,9 @@ export const makeCreateStore = <
       subscribers.forEach((f) => f(state));
     };
 
-    const subscribeToStorage = () => {
-      if (!persistent) return () => {};
-
-      const listener = (e: StorageEvent) => {
-        if (!e.key?.startsWith(namespace)) return;
-
-        cache = getStateRecord(e.newValue);
-        publish();
-      };
-
-      w?.addEventListener("storage", listener);
-
-      return () => w?.removeEventListener("storage", listener);
-    };
-
     const setState = (arg: State<T, R> | StateSetter<T, R>, ttl?: number) => {
+      if (suspended) return console.warn(suspended);
+
       const currentState = getCachedState();
       const newState =
         typeof arg === "function"
@@ -133,15 +123,45 @@ export const makeCreateStore = <
       publish();
     };
 
+    const storageListener = (e: StorageEvent) => {
+      if (!e.key?.startsWith(namespace)) return;
+
+      cache = getStateRecord(e.newValue);
+      publish();
+    };
+
+    const setup = () => {
+      if (persistent) w?.addEventListener("storage", storageListener);
+
+      return () => reset();
+    };
+
+    const reset = (ceaseReason?: string) => {
+      if (suspended && !ceaseReason) setup();
+      else if (persistent) w?.removeEventListener("storage", storageListener);
+
+      subscribers.clear();
+      suspended = ceaseReason ?? false;
+    };
+
     return {
       subscribe: (cb: Callback<State<T, R>>) => {
-        subscribers.add(cb);
+        if (suspended) console.warn(suspended);
+        else subscribers.add(cb);
 
         return () => subscribers.delete(cb);
       },
       getState: () => getCachedState(),
       setState,
-      clean: subscribeToStorage(),
+      end: (
+        erase = false,
+        reason = "This store has been suspended and is not active anymore. Reset it or create another one."
+      ) => {
+        if (persistent && erase) storage.removeItem(key);
+
+        reset(reason);
+      },
+      reset: setup(),
     };
   };
 };

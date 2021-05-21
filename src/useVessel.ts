@@ -11,7 +11,7 @@ export const useVessel = <
   S extends PossibleStores,
   T extends StateFromStore<S>,
   O extends Options<T>,
-  R extends Selected<T, O>
+  R = Selected<T, O>
 >(
   store: S,
   options?: O
@@ -41,9 +41,12 @@ export const useVessel = <
   return [state, store.setState];
 };
 
-export const makeVesselHook = <S extends PossibleStores>(store: S) => <
+export const makeVesselHook = <
+  S extends PossibleStores,
   T extends StateFromStore<S>,
-  O extends Options<T>
+  OO extends Options<T>
 >(
-  options?: O
-) => useVessel(store, options);
+  store: S,
+  makeOptions?: OO
+) => <O extends Options<T> = OO>(options?: O) =>
+  useVessel<S, T, O>(store, { ...makeOptions, ...options } as O);

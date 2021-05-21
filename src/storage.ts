@@ -1,8 +1,10 @@
 import type { State } from "./index";
+import { VESSEL_TYPE } from "./index";
 import w from "./window";
 import { batch } from "./batch";
 
-type StateRecord<T = any> = {
+export type StateRecord<T = any> = {
+  type: typeof VESSEL_TYPE;
   expires: number;
   state: T;
 };
@@ -16,7 +18,7 @@ const stringify = (data: any) => {
   }
 };
 
-const parse = <T>(str?: string | null): StateRecord<T> | null => {
+export const parse = <T>(str?: string | null): StateRecord<T> | null => {
   try {
     return JSON.parse(str ?? "null");
   } catch {
@@ -30,6 +32,7 @@ export const createStateRecord = <T>(
   state: T,
   ttl: number
 ): StateRecord<T> => ({
+  type: VESSEL_TYPE,
   expires: ttl ? Date.now() + hours2Ms(ttl) : 0,
   state,
 });
@@ -63,3 +66,14 @@ export const storage = {
   },
   removeItem,
 };
+
+export const prune = (removeAll = false) =>
+  w &&
+  Object.entries(w.localStorage).forEach(([key, value]) => {
+    const isVesselState =
+      typeof value === "string" &&
+      value.includes(`\"type\":\"${VESSEL_TYPE}\"`);
+
+    if (isVesselState && (removeAll || hasExpired(parse(value))))
+      removeItem(key);
+  });
